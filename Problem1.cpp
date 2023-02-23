@@ -13,6 +13,16 @@ int num_entered = 0;
 int num_left = 0;
 std::vector<int> guests;
 
+//random number generator
+int random(int min, int max) {
+    static bool first = true;
+    if (first) {
+        srand(time(NULL));
+        first = false;
+    }
+    return min + rand() % ((max + 1) - min);
+}
+
 void enter_labyrinth(int id) {
     std::unique_lock<std::mutex> lock(mtx);
     while (num_left > 0) {
