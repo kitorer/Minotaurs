@@ -1,20 +1,68 @@
-#include <iostream>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <chrono>
-#include <vector>
 #include <algorithm>
+#include <array>
+#include <chrono>
+#include <iostream>
+#include <mutex>
+#include <random>
+#include <thread>
 
-std::mutex mtx;
-std::condition_variable cv;
-int num_guests;
-int num_entered = 0;
-int num_left = 0;
-std::vector<int> guests;
+#define NUM_GUESTS 100
+bool isCupcakeAvailable = true;
+std::array<bool, NUM_GUESTS> guestsPicked;
+std::mutex mutex;
+int currentCount = 0;
+unsigned int current_guest;
 
-//random number generator
-int random(int min, int max) {
+int generateRandomNumber(int min, int max);
+void navigateLabyrinth(int threadIndex);
+void checkCupcake();
+
+int main() {
+    auto start = std::chrono::high_resolution_clock::now();
+    std::array<std::thread, NUM_GUESTS> threads{};
+
+    threads[0] = std::thread(checkCupcake);
+
+    for (size_t i = 1; i < threads.size(); i++) {
+        threads[i] = std::thread(navigateLabyrinth, i);
+    }
+
+    while (currentCount < NUM_GUESTS) {
+        current_guest = generateRandomNumber(0, NUM_GUESTS);
+    }
+
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration<double, std::milli>(end - start);
+
+    std::cout << "All " << currentCount << " guests have entered the labyrinth." << " Finished in " << duration.count() << "ms" << std::endl;
+} 
+
+void checkCupcake() {
+    while (currentCount < NUM_GUESTS) {
+        mutex.lock();
+
+        if (current_guest == 0) {
+            if (!isCupcakeAvailable) {
+                currentCount++;
+                isCupcakeAvailable = true;
+            }
+            
+            if (isCupcakeAvailable && !guestsPicked[0]) {
+                currentCount++;
+                isCupcakeAvailable = true;
+                guestsPicked[0] = true;
+            }
+        }
+
+        mutex.unlock();
+    }
+}
+
+int generateRandomNumber(int min, int max) {
     static bool first = true;
     if (first) {
         srand(time(NULL));
@@ -23,48 +71,15 @@ int random(int min, int max) {
     return min + rand() % ((max + 1) - min);
 }
 
-void enter_labyrinth(int id) {
-    std::unique_lock<std::mutex> lock(mtx);
-    while (num_left > 0) {
-        cv.wait(lock);
-    }
-    if (std::find(guests.begin(), guests.end(), id) == guests.end()) {
-        guests.push_back(id);
-    }
-    num_entered++;
-    if (num_entered == num_guests) {
-        num_entered = 0;
-        num_left = num_guests;
-        cv.notify_all();
-    }
-}
+void navigateLabyrinth(int threadIndex) {
+    while (currentCount < NUM_GUESTS) {
+        mutex.lock();
 
-void leave_labyrinth(int id) {
-    std::unique_lock<std::mutex> lock(mtx);
-    num_left--;
-    if (num_left == 0) {
-        cv.notify_all();
+        if (current_guest == threadIndex && isCupcakeAvailable && !guestsPicked[threadIndex]) {
+            isCupcakeAvailable = false;
+            guestsPicked[threadIndex] = true;
+        }
+
+        mutex.unlock();
     }
-}
-
-int main() {
-    std::cout << "Enter the number of guests: ";
-    std::cin >> num_guests;
-
-    std::vector<std::thread> threads;
-    for (int i = 0; i < num_guests; i++) {
-        threads.push_back(std::thread([i] {
-            enter_labyrinth(i);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            leave_labyrinth(i);
-        }));
-    }
-
-    for (auto& thread : threads) {
-        thread.join();
-    }
-
-    std::cout << "All guests have visited the labyrinth at least once!" << std::endl;
-
-    return 0;
 }
